@@ -1,6 +1,9 @@
 package v7
 
 import (
+	"fmt"
+
+	"code.cloudfoundry.org/cli/cf/errors"
 	"code.cloudfoundry.org/cli/command"
 	"code.cloudfoundry.org/cli/command/flag"
 )
@@ -31,9 +34,21 @@ func (cmd RollbackCommand) Execute(args []string) error {
 	app, warnings, _ := cmd.Actor.GetApplicationByNameAndSpace(cmd.RequiredArgs.AppName, cmd.Config.TargetedSpace().GUID)
 	cmd.UI.DisplayWarnings(warnings)
 
+	revisions, warnings, _ := cmd.Actor.GetRevisionsByApplicationNameAndSpace(app.Name, cmd.Config.TargetedSpace().GUID)
+
+	cmd.UI.DisplayWarnings(warnings)
+	if len(revisions) == 0 {
+		return errors.New(fmt.Sprintf("No revisions for app %s", cmd.RequiredArgs.AppName))
+	}
+	newRevision := revisions[len(revisions)-1].Version + 1
 	revision, warnings, _ := cmd.Actor.GetRevisionByApplicationAndVersion(app.GUID, targetRevision)
 	cmd.UI.DisplayWarnings(warnings)
 
+	cmd.UI.DisplayTextWithFlavor("Rolling '{{.AppName}}' back to revision '{{.TargetRevision}}' will create a new revision. The new revision '{{.NewRevision}}' will use the settings from revision '{{.TargetRevision}}'.", map[string]interface{}{
+		"AppName":        cmd.RequiredArgs.AppName,
+		"TargetRevision": targetRevision,
+		"NewRevision":    newRevision,
+	})
 	cmd.UI.DisplayTextWithFlavor("Rolling back to revision {{.TargetRevision}} for app {{.AppName}} in org {{.OrgName}} / space {{.SpaceName}} as {{.Username}}...", map[string]interface{}{
 		"AppName":        cmd.RequiredArgs.AppName,
 		"TargetRevision": targetRevision,

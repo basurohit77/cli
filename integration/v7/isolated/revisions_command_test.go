@@ -11,7 +11,7 @@ import (
 	. "github.com/onsi/gomega/gexec"
 )
 
-var _ = Describe("revisions command", func() {
+var _ = FDescribe("revisions command", func() {
 	var (
 		orgName   string
 		spaceName string

@@ -13,7 +13,7 @@ import (
 	. "github.com/onsi/gomega/gexec"
 )
 
-var _ = Describe("rollback command", func() {
+var _ = FDescribe("rollback command", func() {
 	var (
 		orgName   string
 		spaceName string
@@ -91,17 +91,36 @@ applications:
 					})
 				})
 
-				It("succeeds", func() {
-					userName, _ := helpers.GetCredentials()
+				When("the -f flag is not provided", func() {
+					var buffer *Buffer
 
-					session := helpers.CF("rollback", appName, "--revision", "1")
+					BeforeEach(func() {
+						buffer = NewBuffer()
+					})
+					When("the user enters y", func() {
 
-					Eventually(session).Should(Say(`Rolling back to revision 1 for app %s in org %s / space %s as %s...`, appName, orgName, spaceName, userName))
-					Eventually(session).Should(Say(`OK`))
-					Eventually(session).Should(Exit(0))
-					session = helpers.CF("revisions", appName)
-					Eventually(session).Should(Say(`3\s+[\w\-]+\s+New droplet deployed.`))
-					Eventually(session).Should(Exit(0))
+						BeforeEach(func() {
+							_, err := buffer.Write([]byte("y\n"))
+							Expect(err).ToNot(HaveOccurred())
+						})
+
+						It("prompts the user to rollback, then successfully rolls back", func() {
+							userName, _ := helpers.GetCredentials()
+
+							session := helpers.CFWithStdin(buffer, "rollback", appName, "--revision", "1")
+							Eventually(session).Should(Exit(0))
+
+							Expect(session).To(Say(`Rolling '%s' back to revision '1' will create a new revision. The new revision '3' will use the settings from revision '1'.`, appName))
+							Expect(session).To(Say(`Are you sure you want to continue? [y/N]>`))
+							Expect(session).To(Say(`Rolling back to revision 1 for app %s in org %s / space %s as %s...`, appName, orgName, spaceName, userName))
+							Expect(session).To(Say(`OK`))
+
+							session = helpers.CF("revisions", appName)
+
+							Eventually(session).Should(Exit(0))
+							Expect(session).To(Say(`3\s+[\w\-]+\s+New droplet deployed.`))
+						})
+					})
 				})
 			})
 		})

@@ -2,6 +2,7 @@ package v7_test
 
 import (
 	"errors"
+	"fmt"
 
 	"code.cloudfoundry.org/cli/actor/actionerror"
 	"code.cloudfoundry.org/cli/actor/v7action"
@@ -34,11 +35,18 @@ var _ = Describe("rollback Command", func() {
 		fakeConfig = new(commandfakes.FakeConfig)
 		fakeSharedActor = new(commandfakes.FakeSharedActor)
 		fakeActor = new(v7fakes.FakeActor)
+		revisions := []resources.Revision{
+			resources.Revision{Version: 1},
+			resources.Revision{Version: 2},
+		}
 
 		binaryName = "faceman"
 		fakeConfig.BinaryNameReturns(binaryName)
 		app = "some-app"
 
+		fakeActor.GetRevisionsByApplicationNameAndSpaceReturns(
+			revisions, v7action.Warnings{"warning-2"}, nil,
+		)
 		cmd = v7.RollbackCommand{
 			RequiredArgs: flag.AppName{AppName: app},
 			BaseCommand: v7.BaseCommand{
@@ -116,12 +124,25 @@ var _ = Describe("rollback Command", func() {
 	// 	})
 	// })
 
+	When("an app has no revisions", func() {
+
+		BeforeEach(func() {
+			fakeActor.GetRevisionsByApplicationNameAndSpaceReturns([]resources.Revision{}, nil, nil)
+		})
+
+		It("displays an error saying that there are no revisions, and does not rollback", func() {
+			Expect(executeErr).NotTo(BeNil())
+			Expect(executeErr).To(MatchError(fmt.Sprintf("No revisions for app %s", app)))
+		})
+	})
+
 	When("the first revision is set as the rollback target", func() {
 		BeforeEach(func() {
 			cmd.Version = flag.PositiveInteger{Value: 1}
 		})
 
 		When("the app has at least one revision", func() {
+
 			BeforeEach(func() {
 				fakeActor.GetApplicationByNameAndSpaceReturns(
 					resources.Application{GUID: "123"},
@@ -130,12 +151,12 @@ var _ = Describe("rollback Command", func() {
 				)
 				fakeActor.GetRevisionByApplicationAndVersionReturns(
 					resources.Revision{Version: 1, GUID: "some-1-guid"},
-					v7action.Warnings{"warning-2"},
+					v7action.Warnings{"warning-3"},
 					nil,
 				)
 				fakeActor.CreateDeploymentByApplicationAndRevisionReturns(
 					"deployment-guid",
-					v7action.Warnings{"warning-3"},
+					v7action.Warnings{"warning-4"},
 					nil,
 				)
 			})
@@ -156,10 +177,12 @@ var _ = Describe("rollback Command", func() {
 				Expect(appGUID).To(Equal("123"))
 				Expect(revisionGUID).To(Equal("some-1-guid"))
 
+				Expect(testUI.Out).To(Say(`Rolling '%s' back to revision '1' will create a new revision. The new revision '3' will use the settings from revision '1'.`, appName))
 				Expect(testUI.Out).To(Say(`Rolling back to revision 1 for app some-app in org some-org / space some-space as steve\.\.\.`))
 				Expect(testUI.Err).To(Say("warning-1"))
 				Expect(testUI.Err).To(Say("warning-2"))
 				Expect(testUI.Err).To(Say("warning-3"))
+				Expect(testUI.Err).To(Say("warning-4"))
 				Expect(testUI.Out).To(Say(`OK`))
 			})
 		})
