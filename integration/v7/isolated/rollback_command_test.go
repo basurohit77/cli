@@ -111,7 +111,7 @@ applications:
 							Eventually(session).Should(Exit(0))
 
 							Expect(session).To(Say(`Rolling '%s' back to revision '1' will create a new revision. The new revision '3' will use the settings from revision '1'.`, appName))
-							Expect(session).To(Say(`Are you sure you want to continue? [y/N]>`))
+							Expect(session).To(Say(`Are you sure you want to continue?`))
 							Expect(session).To(Say(`Rolling back to revision 1 for app %s in org %s / space %s as %s...`, appName, orgName, spaceName, userName))
 							Expect(session).To(Say(`OK`))
 

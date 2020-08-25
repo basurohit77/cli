@@ -28,10 +28,12 @@ var _ = Describe("rollback Command", func() {
 		binaryName      string
 		executeErr      error
 		app             string
+		input           *Buffer
 	)
 
 	BeforeEach(func() {
-		testUI = ui.NewTestUI(nil, NewBuffer(), NewBuffer())
+		input = NewBuffer()
+		testUI = ui.NewTestUI(input, NewBuffer(), NewBuffer())
 		fakeConfig = new(commandfakes.FakeConfig)
 		fakeSharedActor = new(commandfakes.FakeSharedActor)
 		fakeActor = new(v7fakes.FakeActor)
@@ -161,29 +163,77 @@ var _ = Describe("rollback Command", func() {
 				)
 			})
 
-			It("successfully executes the command and outputs warnings", func() {
-				Expect(fakeActor.GetApplicationByNameAndSpaceCallCount()).To(Equal(1), "GetApplicationByNameAndSpace call count")
-				appName, spaceGUID := fakeActor.GetApplicationByNameAndSpaceArgsForCall(0)
-				Expect(appName).To(Equal(app))
-				Expect(spaceGUID).To(Equal("some-space-guid"))
+			When("user says yes to prompt", func() {
 
-				Expect(fakeActor.GetRevisionByApplicationAndVersionCallCount()).To(Equal(1), "GetRevisionByApplicationAndVersion call count")
-				appGUID, version := fakeActor.GetRevisionByApplicationAndVersionArgsForCall(0)
-				Expect(appGUID).To(Equal("123"))
-				Expect(version).To(Equal(1))
+				BeforeEach(func() {
+					_, err := input.Write([]byte("y\n"))
+					Expect(err).ToNot(HaveOccurred())
+				})
 
-				Expect(fakeActor.CreateDeploymentByApplicationAndRevisionCallCount()).To(Equal(1), "CreateDeploymentByApplicationAndRevision call count")
-				appGUID, revisionGUID := fakeActor.CreateDeploymentByApplicationAndRevisionArgsForCall(0)
-				Expect(appGUID).To(Equal("123"))
-				Expect(revisionGUID).To(Equal("some-1-guid"))
+				It("successfully executes the command and outputs warnings", func() {
+					Expect(fakeActor.GetApplicationByNameAndSpaceCallCount()).To(Equal(1), "GetApplicationByNameAndSpace call count")
+					appName, spaceGUID := fakeActor.GetApplicationByNameAndSpaceArgsForCall(0)
+					Expect(appName).To(Equal(app))
+					Expect(spaceGUID).To(Equal("some-space-guid"))
 
-				Expect(testUI.Out).To(Say(`Rolling '%s' back to revision '1' will create a new revision. The new revision '3' will use the settings from revision '1'.`, appName))
-				Expect(testUI.Out).To(Say(`Rolling back to revision 1 for app some-app in org some-org / space some-space as steve\.\.\.`))
-				Expect(testUI.Err).To(Say("warning-1"))
-				Expect(testUI.Err).To(Say("warning-2"))
-				Expect(testUI.Err).To(Say("warning-3"))
-				Expect(testUI.Err).To(Say("warning-4"))
-				Expect(testUI.Out).To(Say(`OK`))
+					Expect(fakeActor.GetRevisionByApplicationAndVersionCallCount()).To(Equal(1), "GetRevisionByApplicationAndVersion call count")
+					appGUID, version := fakeActor.GetRevisionByApplicationAndVersionArgsForCall(0)
+					Expect(appGUID).To(Equal("123"))
+					Expect(version).To(Equal(1))
+
+					Expect(fakeActor.CreateDeploymentByApplicationAndRevisionCallCount()).To(Equal(1), "CreateDeploymentByApplicationAndRevision call count")
+					appGUID, revisionGUID := fakeActor.CreateDeploymentByApplicationAndRevisionArgsForCall(0)
+					Expect(appGUID).To(Equal("123"))
+					Expect(revisionGUID).To(Equal("some-1-guid"))
+
+					Expect(testUI.Out).To(Say(`Rolling '%s' back to revision '1' will create a new revision. The new revision '3' will use the settings from revision '1'.`, appName))
+					Expect(testUI.Out).To(Say("Are you sure you want to continue?"))
+					Expect(testUI.Out).To(Say(`Rolling back to revision 1 for app some-app in org some-org / space some-space as steve\.\.\.`))
+					Expect(testUI.Err).To(Say("warning-1"))
+					Expect(testUI.Err).To(Say("warning-2"))
+					Expect(testUI.Err).To(Say("warning-3"))
+					Expect(testUI.Err).To(Say("warning-4"))
+					Expect(testUI.Out).To(Say(`OK`))
+				})
+			})
+			When("user says no to prompt", func() {
+				BeforeEach(func() {
+					_, err := input.Write([]byte("n\n"))
+					Expect(err).ToNot(HaveOccurred())
+				})
+
+				It("does not make api calls", func() {
+					Expect(fakeActor.GetApplicationByNameAndSpaceCallCount()).To(Equal(1), "GetApplicationByNameAndSpace call count")
+					appName, spaceGUID := fakeActor.GetApplicationByNameAndSpaceArgsForCall(0)
+					Expect(appName).To(Equal(app))
+					Expect(spaceGUID).To(Equal("some-space-guid"))
+
+					Expect(fakeActor.GetRevisionByApplicationAndVersionCallCount()).To(Equal(1), "GetRevisionByApplicationAndVersion call count")
+					appGUID, version := fakeActor.GetRevisionByApplicationAndVersionArgsForCall(0)
+					Expect(appGUID).To(Equal("123"))
+					Expect(version).To(Equal(1))
+
+					Expect(fakeActor.CreateDeploymentByApplicationAndRevisionCallCount()).To(Equal(0), "CreateDeploymentByApplicationAndRevision call count")
+
+					Expect(testUI.Out).To(Say(`Rolling '%s' back to revision '1' will create a new revision. The new revision '3' will use the settings from revision '1'.`, app))
+					Expect(testUI.Out).To(Say("App '%s' has not been rolled back to revision '1'.", app))
+					Expect(testUI.Err).To(Say("warning-1"))
+					Expect(testUI.Err).To(Say("warning-2"))
+					Expect(testUI.Err).To(Say("warning-3"))
+				})
+			})
+			When("the user chooses the default", func() {
+				BeforeEach(func() {
+					_, err := input.Write([]byte("\n"))
+					Expect(err).ToNot(HaveOccurred())
+				})
+
+				It("cancels the rollback", func() {
+					Expect(executeErr).ToNot(HaveOccurred())
+
+					Expect(testUI.Out).To(Say("App '%s' has not been rolled back to revision '1'.", app))
+					Expect(fakeActor.CreateDeploymentByApplicationAndRevisionCallCount()).To(Equal(0))
+				})
 			})
 		})
 	})
